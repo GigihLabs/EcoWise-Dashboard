@@ -30,9 +30,10 @@ with st.sidebar:
     else:
         st.markdown("<h1 style='text-align: center; color: #2E7D32;'>Eco-Wise</h1>", unsafe_allow_html=True)
     
-    st.markdown("### **EcoWise Analysis Dashboard**")
-    st.write("""Dashboard ini mempresentasikan insight mengenai dataset klasifikasi sampah yang digunakan dalam pengembangan model AI EcoWise. 
-             Melalui visualisasi ini, kita dapat memantau distribusi material limbah guna mendukung sistem pengelolaan sampah cerdas.""")
+    st.subheader("EcoWise Analysis Dashboard")
+    st.write("""Dashboard ini mempresentasikan insight mengenai dataset klasifikasi sampah yang digunakan dalam pengembangan model AI EcoWise.""")
+    st.write("")
+    st.write("""Melalui visualisasi ini, kita dapat memantau distribusi material limbah guna mendukung sistem pengelolaan sampah cerdas.""")
     st.divider()
 
 # --- FUNGSI DOWNLOAD & EKSTRAK AUTOMATIC ---
@@ -42,11 +43,13 @@ def load_and_extract_from_cloud():
         if not os.path.exists(ZIP_PATH):
             try:
                 with st.spinner("📥 Mengunduh dataset asli dari Dropbox Cloud (1.37 GB)... Proses ini memakan waktu beberapa menit."):
-                    opener = urllib.request.build_opener() # Atur User-Agent agar unduhan stabil
+                    # Atur User-Agent agar unduhan stabil
+                    opener = urllib.request.build_opener()
                     opener.addheaders = [('User-agent', 'Mozilla/5.0')]
                     urllib.request.install_opener(opener)
                     
-                    urllib.request.urlretrieve(DIRECT_DOWNLOAD_LINK, ZIP_PATH) # Proses pengunduhan langsung ke ZIP_PATH
+                    # Proses pengunduhan langsung ke ZIP_PATH
+                    urllib.request.urlretrieve(DIRECT_DOWNLOAD_LINK, ZIP_PATH)
                 st.success("✅ Unduhan zip dari Dropbox selesai!")
             except Exception as e:
                 return f"❌ Gagal mengunduh dari Cloud: {str(e)}"
@@ -57,7 +60,7 @@ def load_and_extract_from_cloud():
                     zip_ref.extractall(EXTRACT_DIR)
             return "✅ Dataset sukses diekstrak & siap!"
         except Exception as e:
-            if os.path.exists(ZIP_PATH): # Jika ekstraksi gagal karena berkas zip korup sisa proses sebelumnya, bersihkan berkasnya
+            if os.path.exists(ZIP_PATH):
                 os.remove(ZIP_PATH)
             return f"❌ Gagal mengekstrak berkas: {str(e)}. File rusak telah dibersihkan secara otomatis."
     return "✅ Dataset siap dianalisis."
@@ -65,7 +68,7 @@ def load_and_extract_from_cloud():
 status_cloud = load_and_extract_from_cloud()
 st.sidebar.info(status_cloud)
 
-# --- FUNGSI SCANNING DATASET ---
+# --- FUNGSI SCANNING DATASET (DIOPTIMALKAN UNTUK ASPEK RASIO & BRIGHTNESS) ---
 @st.cache_data
 def scan_data(base_dir):
     file_data = []
@@ -81,11 +84,28 @@ def scan_data(base_dir):
                     main_cat = path_parts[0]
                     sub_cat = path_parts[1]
                     for file in files:
+                        full_path = os.path.join(root, file)
+                        width, height = 0, 0
+                        brightness_val = 0.0
+                        
+                        # Dapatkan metadata dimensi dan kalkulasi nilai brightness citra secara aman
+                        try:
+                            with Image.open(full_path) as img:
+                                width, height = img.size
+                                # Konversi ke mode 'L' (Grayscale) dan hitung rata-rata pixel sesuai skrip ipynb Anda
+                                img_gray = img.convert("L")
+                                brightness_val = float(np.mean(img_gray))
+                        except Exception:
+                            pass # Lewati data jika citra rusak atau tidak terbaca oleh Pillow
+                        
                         file_data.append({
-                            "file_path": os.path.join(root, file),
+                            "file_path": full_path,
                             "kategori_utama": main_cat, 
                             "sub_kategori": sub_cat,
-                            "labels_initial": f"{main_cat} - {sub_cat}"
+                            "labels_initial": f"{main_cat} - {sub_cat}",
+                            "width": width,
+                            "height": height,
+                            "brightness": brightness_val
                         })
     return pd.DataFrame(file_data)
 
@@ -108,7 +128,13 @@ if not df.empty:
 
     st.divider()
 
-    tab1, tab2, tab3 = st.tabs(["📊 Analisis Data Utama", "🖼️ Sampel Gambar", "📊 Distribusi Material"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 Analisis Data Utama", 
+        "🖼️ Sampel Gambar", 
+        "📊 Distribusi Material", 
+        "📐 Analisis Dimensi Gambar",
+        "💡 Analisis Kecerahan Citra"
+        ])
     with tab1:
         # --- VISUALISASI EDA ---
         c1, c2 = st.columns(2)
@@ -122,7 +148,7 @@ if not df.empty:
             ax.set_title('Proporsi Kategori Utama Limbah (Eco-Wise)', fontsize=14)
             ax.set_ylabel('')  
             st.pyplot(fig)
-            st.markdown(f"**Insight:** Kategori **{main_counts.idxmax()}** adalah yang paling dominan dengan jumlah **{main_counts.max()}** gambar.")
+            st.info(f"**Insight:** Kategori **{main_counts.idxmax()}** adalah yang paling dominan dengan jumlah **{main_counts.max()}** gambar.")
             
         with c2:
             st.subheader("📈 Distribusi Gambar per Kelas")
@@ -141,10 +167,13 @@ if not df.empty:
             plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
             st.pyplot(fig2)
+
+            info_text = f"**Jumlah Gambar per Kelas (Anorganik, B3, Organik):**\n"
             
-            st.write("**Jumlah Gambar per Kelas (Anorganik, B3, Organik):**")
             for kelas, jumlah in label_counts_main_eda.items():
-                st.markdown(f"- &nbsp;&nbsp;**{kelas}**: {jumlah} gambar")
+                info_text += f"- **{kelas}**: {jumlah} gambar\n"
+                
+            st.info(info_text)
 
     # --- MATRIKS SUBPLOTS SAMPEL DARI IPYNB ---
     with tab2:
@@ -246,14 +275,88 @@ if not df.empty:
         
         st.pyplot(fig4) # Merender grafis ke Tab 3 Streamlit
 
-        st.markdown("- Distribusi jumlah gambar untuk setiap jenis material spesifik. Data diurutkan berdasarkan jumlah gambar secara menaik.")
-        st.markdown("- Material Anorganik seperti PET, rag, plastic shopping bags, B3 seperti battery, Organik seperti eggshells, daun, kardus, " \
-        "tissue memiliki jumlah gambar yang tinggi, mendekati atau memiliki jumlah gambar yang tinggi mencapai 1000. Ini menunjukkan bahwa dataset " \
-        "memiliki representasi yang kuat untuk jenis-jenis material ini.")
-        st.markdown("- Material seperti Anorganik HDPEM memiliki jumlah gambar yang relatif lebih rendah yaitu 451 gambar dibandingkan yang lain.")
-        st.markdown("- Visualisasi ini membantu mengidentifikasi potensi ketidakseimbangan kelas pada tingkat jenis material yang lebih detail, " \
-        "yang penting untuk dipertimbangkan dalam fase pelatihan model nanti. Beberapa jenis B3 (medicine_bottle, aerosol_cans, plastic_detergent_bottles, " \
-        "glass_cosmetic_containers, tablet_capsule) memiliki jumlah gambar yang sama yaitu 500, yang lebih sedikit dari kategori lain yang berjumlah sekitar 1000.")
+        st.info(f"""
+            💡 **Insight Distribusi Material:**
+            * Distribusi jumlah gambar untuk setiap jenis material spesifik. Data diurutkan berdasarkan jumlah gambar secara menaik.
+            * Material Anorganik seperti PET, rag, plastic shopping bags, B3 seperti battery, Organik seperti eggshells, daun, kardus, 
+                tissue memiliki jumlah gambar yang tinggi, mendekati atau memiliki jumlah gambar yang tinggi mencapai 1000. Ini menunjukkan 
+                bahwa dataset memiliki representasi yang kuat untuk jenis-jenis material ini.
+            * Material seperti Anorganik HDPEM memiliki jumlah gambar yang relatif lebih rendah yaitu 451 gambar dibandingkan yang lain.
+            * Visualisasi ini membantu mengidentifikasi potensi ketidakseimbangan kelas pada tingkat jenis material yang lebih detail, 
+                yang penting untuk dipertimbangkan dalam fase pelatihan model nanti. Beberapa jenis B3 (medicine_bottle, aerosol_cans, 
+                plastic_detergent_bottles, glass_cosmetic_containers, tablet_capsule) memiliki jumlah gambar yang sama yaitu 500, yang 
+                lebih sedikit dari kategori lain yang berjumlah sekitar 1000.
+            """)
+
+    # --- ANALISIS DIMENSI & ASPEK RASIO ---
+    with tab4:
+        st.subheader("📐 Distribusi Aspect Ratio Dataset Citra EcoWise")
+        st.write("Visualisasi histogram di bawah memaparkan sebaran perbandingan lebar terhadap tinggi (*Width / Height*) dari seluruh citra sampah.")
+
+        # Saring DataFrame untuk memastikan tidak ada nilai dimensi bernilai 0
+        valid_sizes_df = df[(df['width'] > 0) & (df['height'] > 0)]
+
+        if not valid_sizes_df.empty:
+            # Hitung rasio aspek (w / h) sesuai logika ipynb Anda
+            ratios = valid_sizes_df['width'] / valid_sizes_df['height']
+
+            sns.set_style("darkgrid")
+            fig5, ax5 = plt.subplots(figsize=(10, 5))
+            
+            # Buat histogram aspect ratio dengan bins=20 sesuai skrip ipynb asli
+            ax5.hist(ratios, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
+            ax5.set_title("Distribusi Aspect Ratio (Width / Height)", fontsize=14, fontweight='bold')
+            ax5.set_xlabel("Rasio Aspek (Width / Height)", fontsize=11)
+            ax5.set_ylabel("Frekuensi / Jumlah Gambar", fontsize=11)
+            
+            st.pyplot(fig5)
+            
+            # Tambahkan ringkasan nilai statistik deskriptif untuk memperkuat penjelasan portofolio
+            st.info(f"""
+            💡 **Insight Analisis Dimensi:**
+            * **Nilai Rasio Minimum:** {ratios.min():.2f}
+            * **Nilai Rasio Maksimum:** {ratios.max():.2f}
+            * **Rata-rata Rasio (Mean):** {ratios.mean():.2f}
+            * **Median Rasio:** {ratios.median():.2f}
+            
+            Sebagian besar sebaran menumpuk di area rasio tertentu. Hal ini mengindikasikan karakteristik bentuk rasio asli gambar sebelum masuk ke proses penyeragaman dimensi (*Resizing*) pada arsitektur pembelajaran mendalam MobileNetV2.
+            """)
+        else:
+            st.warning("⚠️ Tidak ada data ukuran gambar yang valid ditemukan untuk melakukan visualisasi aspek rasio.")
+
+    # --- ANALISIS KECERAHAN CITRA ---
+    with tab5:
+        st.subheader("💡 Distribusi Kecerahan (Brightness) Dataset Citra EcoWise")
+        st.write("Visualisasi di bawah merupakan histogram representasi tingkat kecerahan rata-rata piksel dari citra setelah dikonversi ke skala abu-abu (Grayscale).")
+
+        # Validasi data kecerahan untuk memastikan pemrosesan sukses
+        valid_brightness_df = df[df['width'] > 0]
+
+        if not valid_brightness_df.empty:
+            brightness_list = valid_brightness_df['brightness']
+
+            sns.set_style("darkgrid")
+            fig6, ax6 = plt.subplots(figsize=(10, 5))
+            
+            # Merender histogram kecerahan dengan bins=20 sesuai skrip asli ipynb
+            ax6.hist(brightness_list, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
+            ax6.set_title("Distribusi Kecerahan Citra (Image Brightness Distribution)", fontsize=14, fontweight='bold')
+            ax6.set_xlabel("Skala Kecerahan (0: Hitam murni -> 255: Putih murni)", fontsize=11)
+            ax6.set_ylabel("Frekuensi / Jumlah Gambar", fontsize=11)
+            
+            st.pyplot(fig6)
+
+            st.info(f"""
+            💡 **Insight Analisis Kecerahan (Brightness):**
+            * **Kecerahan Minimum:** {brightness_list.min():.2f}
+            * **Kecerahan Maksimum:** {brightness_list.max():.2f}
+            * **Rata-rata Kecerahan (Mean):** {brightness_list.mean():.2f}
+            * **Standar Deviasi Kecerahan:** {brightness_list.std():.2f}
+            
+            Nilai kecerahan gambar berpusat pada jangkauan tertentu pada rentang 0-255. Informasi keragaman pencahayaan ini sangat krusial dalam rekayasa Computer Vision, karena menjadi landasan penting bagi tim Data Science untuk mempertimbangkan teknik augmentasi data seperti *Random Brightness Adjustments* saat melatih model klasifikasi MobileNetV2 agar model tangguh terhadap variasi kondisi pencahayaan di lapangan.
+            """)
+        else:
+            st.warning("⚠️ Gagal mengekstrak atau membaca metrik kecerahan dari data gambar.")
 
     st.divider()
 
