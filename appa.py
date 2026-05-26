@@ -17,7 +17,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 ZIP_PATH = os.path.join(DATA_DIR, "ecowise_dataset_converted.zip")
 EXTRACT_DIR = os.path.join(BASE_DIR, "dataset_temp")
 LOGO_PATH = os.path.join(DATA_DIR, "logo_ecowise.png")
-MANIFEST_PATH = os.path.join(EXTRACT_DIR, "dataset_manifest.csv")
+MANIFEST_PATH = os.path.join(BASE_DIR, "dataset_manifest.csv")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -27,7 +27,7 @@ DIRECT_DOWNLOAD_LINK = "https://www.dropbox.com/scl/fi/uuv7u2442ih0akn4bdd1n/eco
 # --- SIDEBAR ---
 with st.sidebar:
     if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, use_container_width=True) # Menampilkan Logo
+        st.image(LOGO_PATH, use_container_width=True)
     else:
         st.markdown("<h1 style='text-align: center; color: #2E7D32;'>Eco-Wise</h1>", unsafe_allow_html=True)
     
@@ -66,66 +66,24 @@ def load_and_extract_from_cloud():
 status_cloud = load_and_extract_from_cloud()
 st.sidebar.info(status_cloud)
 
-# --- FUNGSI SCANNING DATASET SECARA MANUAL (FALLBACK JIKA MANIFEST HILANG) ---
-@st.cache_data
-def scan_data(base_dir):
-    file_data = []
-    if os.path.exists(base_dir):
-        for root, dirs, files in os.walk(base_dir):
-            files = [f for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            if files:
-                rel_path = os.path.relpath(root, base_dir)
-                path_parts = rel_path.split(os.sep)
-                if path_parts[0] == 'dataset-trashcan' or path_parts[0] == '.':
-                    path_parts = path_parts[1:]
-                if len(path_parts) >= 2:
-                    main_cat = path_parts[0]
-                    sub_cat = path_parts[1]
-                    for file in files:
-                        full_path = os.path.join(root, file)
-                        width, height = 0, 0
-                        brightness_val = 0.0
-                        try:
-                            with Image.open(full_path) as img:
-                                width, height = img.size
-                                img_gray = img.convert("L")
-                                brightness_val = float(np.mean(img_gray))
-                        except Exception:
-                            pass
-                        
-                        file_data.append({
-                            "file_path": full_path,
-                            "kategori_utama": main_cat, 
-                            "sub_kategori": sub_cat,
-                            "labels_initial": f"{main_cat} - {sub_cat}",
-                            "width": width,
-                            "height": height,
-                            "brightness": brightness_val
-                        })
-    return pd.DataFrame(file_data)
-
 # =========================================================================
 # PROSES LOADING DATASET SECARA OTOMATIS BERBASIS MANIFEST CSV
 # =========================================================================
 df = pd.DataFrame()
 
 if os.path.exists(MANIFEST_PATH):
-    # Load data secara instan dari manifest file
     df_manifest = pd.read_csv(MANIFEST_PATH)
     df = df_manifest.copy()
     
-    # Penyelarasan struktur kolom manifest
     if 'labels_initial' not in df.columns and 'kategori_utama' in df.columns and 'sub_kategori' in df.columns:
         df['labels_initial'] = df['kategori_utama'] + " - " + df['sub_kategori']
         
     if 'brightness' not in df.columns:
         df['brightness'] = 127.0
         
-    # st.sidebar.success("📊 Sukses memuat data melalui Manifest CSV!")
+    st.sidebar.success("📊 Sukses memuat data melalui Manifest CSV!")
 else:
-    # Otomatis beralih ke scan folder jika manifest fisik belum terextrak
-    st.sidebar.warning("⚠️ Berkas manifest.csv tidak ditemukan di direktori temp. Melakukan pemindaian otomatis...")
-    df = scan_data(EXTRACT_DIR)
+    st.sidebar.error("❌ Berkas dataset_manifest.csv tidak ditemukan di root direktori repositori!")
 
 # --- MAIN DASHBOARD LAYOUT ---
 st.header("🌱 EcoWise Cloud Analysis Dashboard")
@@ -152,14 +110,12 @@ if not df.empty:
     ])
     
     with tab1:
-        # --- VISUALISASI EDA ---
         c1, c2 = st.columns(2)
         with c1:
             st.subheader("📊 Proporsi Sampah")
             fig, ax = plt.subplots(figsize=(10, 6))
             main_counts = df['kategori_utama'].value_counts()
             colors = sns.color_palette('pastel')[0:4]
-            
             ax.pie(main_counts, labels=main_counts.index, autopct='%1.1f%%', startangle=140, colors=colors)
             ax.set_title('Proporsi Kategori Utama Sampah', fontsize=14)
             ax.set_ylabel('')  
@@ -179,6 +135,7 @@ if not df.empty:
             for i, v in enumerate(label_counts_main_eda.values):
                 ax2.text(i, v + (max(label_counts_main_eda.values) * 0.02), str(v), color='black', ha='center', va='bottom', fontweight='bold', fontsize=11)
             
+            plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
             st.pyplot(fig2)
 
@@ -186,12 +143,6 @@ if not df.empty:
             for kelas, jumlah in label_counts_main_eda.items():
                 info_text += f"- **{kelas}**: {jumlah} gambar\n"
             st.info(info_text)
-
-        st.info(f"""
-                💡 **Insight Analisis Data Utama:**
-                * Kategori gambar sampah 'Anorganik' dan 'Organik' adalah yang paling dominan, yaitu sebanyak 6.471 gambar sampah 'Anorganik' diikuti oleh 'Organik' sebanyak 6.000 gambar.
-                * Terdapat ketidakseimbangan yang signifikan antar kelas. Kategori 'Non-Waste' memiliki jumlah gambar yang paling sedikit (1.649 gambar), menjadikannya kelas minoritas dibandingkan dengan kategori 'Anorganik' dan 'Organik' yang jauh lebih banyak. Kategori 'B3' juga tergolong minoritas dengan 3.500 gambar.
-                """)
 
     with tab2:
         st.subheader("🖼️ Grid Sampah Berdasarkan Sub-Kategori")
@@ -216,28 +167,19 @@ if not df.empty:
 
                 if num_categories_to_plot == 1:
                     axs = np.array([axs])
-                if num_samples_to_display == 1 and num_categories_to_plot > 1:
-                    axs = axs.reshape(-1, 1)
-                elif num_samples_to_display == 1 and num_categories_to_plot == 1:
-                    axs = np.array([[axs]])
 
                 for i, category_name in enumerate(sorted_categories_plot):
                     image_paths_list = all_images_by_category_plot[category_name]
 
                     if image_paths_list:
-                        # Substitusi lokasi path agar gambar tetap terbaca dari folder ekstraksi lokal
                         cleaned_paths = []
                         for p in image_paths_list:
                             p_str = str(p)
                             if "/content/drive/MyDrive/EcoWise/dataset-trashcan/" in p_str:
                                 local_p = p_str.replace("/content/drive/MyDrive/EcoWise/dataset-trashcan/", f"{EXTRACT_DIR}/dataset-trashcan/")
                                 cleaned_paths.append(local_p)
-                            elif "dataset_temp" in p_str:
-                                cleaned_paths.append(p_str)
                             else:
-                                # Fallback alternatif konstruksi path manual
-                                normalized_path = os.path.join(EXTRACT_DIR, "dataset-trashcan", category_name.split('\n')[0], category_name.split('\n')[1].replace('(', '').replace(')', ''), os.path.basename(p_str))
-                                cleaned_paths.append(normalized_path)
+                                cleaned_paths.append(p_str)
 
                         selected_image_paths = np.random.choice(
                             cleaned_paths,
@@ -245,16 +187,10 @@ if not df.empty:
                             replace=False
                         )
 
-                        if num_samples_to_display > 0:
-                            axs[i, 0].set_ylabel(
-                                category_name,
-                                rotation=0,
-                                size='medium',
-                                labelpad=60, 
-                                ha='right',
-                                va='center',
-                                fontweight='bold'
-                            )
+                        axs[i, 0].set_ylabel(
+                            category_name, rotation=0, size='medium',
+                            labelpad=60, ha='right', va='center', fontweight='bold'
+                        )
 
                         for j in range(num_samples_to_display):
                             if j < len(selected_image_paths):
@@ -263,131 +199,46 @@ if not df.empty:
                                     img_plot = Image.open(img_path_plot).convert('RGB')
                                     axs[i, j].imshow(img_plot)
                                 except Exception:
-                                    axs[i, j].set_title("N/A (Path Error)", fontsize=8)
+                                    axs[i, j].text(0.5, 0.5, 'Error\nImage', ha='center', va='center', fontsize=8)
                             else:
                                 axs[i, j].text(0.5, 0.5, 'N/A', ha='center', va='center', fontsize=10)
 
                             axs[i, j].set_xticks([])
                             axs[i, j].set_yticks([])
-                            axs[i, j].set_xlabel('')
                     else:
-                        if num_samples_to_display > 0:
-                            axs[i, 0].set_ylabel(category_name, rotation=0, size='medium', labelpad=60, ha='right', va='center')
+                        axs[i, 0].set_ylabel(category_name, rotation=0, size='medium', labelpad=60, ha='right', va='center')
                         for j in range(num_samples_to_display):
                             axs[i, j].text(0.5, 0.5, 'No Images', ha='center', va='center', fontsize=10)
                             axs[i, j].set_xticks([])
                             axs[i, j].set_yticks([])
-                            axs[i, j].set_xlabel('')
 
                 plt.subplots_adjust(hspace=0.5, wspace=0.1, top=0.98, left=0.25)
                 st.pyplot(fig3)
-        else:
-            st.warning("Tidak ada data gambar untuk sampel EDA.")
-
-        st.info(f"""
-                💡 **Insight Sampel Gambar:**
-                * Berdasarkan visualisasi sampel gambar, dapat dilihat bahwa dataset memiliki variasi yang cukup baik dalam hal jenis objek, latar belakang, pencahayaan, dan sudut pengambilan gambar di setiap kategori.
-                * Variasi ini menunjukkan bahwa dataset memiliki kompleksitas yang cukup tinggi, sehingga model yang digunakan harus mampu melakukan generalisasi dengan baik terhadap berbagai kondisi citra.
-                """)
 
     with tab3:
         st.subheader("📊 Distribusi Semua Jenis Sub-Kategori Material")
-        st.write("Grafik di bawah menunjukkan sebaran jumlah data gambar pada seluruh 20 jenis material spesifik secara mendetail.")
-        
         fig4, ax4 = plt.subplots(figsize=(12, 8))
         initial_counts = df['labels_initial'].value_counts().sort_values(ascending=True)
-        
         initial_counts.plot(kind='barh', color='#4682B4', ax=ax4)
         ax4.set_title('Distribusi Jenis Material Spesifik (All Categories)', fontsize=14)
-        ax4.set_xlabel('Jumlah Gambar')
-        ax4.set_ylabel('Material (Kategori - Subfolder)')
-        
         for i, v in enumerate(initial_counts.values):
             ax4.text(v + (max(initial_counts.values) * 0.005), i, str(v), color='black', va='center', fontweight='bold', fontsize=10)
-            
         plt.tight_layout()
         st.pyplot(fig4)
 
-        st.info(f"""
-                💡 **Insight Distribusi Material:**
-                * Material Anorganik seperti PET, rag, plastic shopping bags, B3 seperti battery, Organik seperti eggshells, daun, kardus memiliki representasi yang kuat.
-                * Distribusi jumlah gambar untuk setiap jenis material spesifik. Data diurutkan berdasarkan jumlah gambar secara menaik.
-                """)
-
     with tab4:
         st.subheader("📐 Distribusi Aspect Ratio Dataset Citra EcoWise")
-        st.write("Visualisasi histogram di bawah memaparkan sebaran perbandingan lebar terhadap tinggi (*Width / Height*) dari seluruh citra sampah.")
-
         valid_sizes_df = df[(df['width'] > 0) & (df['height'] > 0)]
-
         if not valid_sizes_df.empty:
             ratios = valid_sizes_df['width'] / valid_sizes_df['height']
-
             fig5, ax5 = plt.subplots(figsize=(10, 5))
             ax5.hist(ratios, bins=20, color='#4682B4', edgecolor='white', alpha=0.7)
             ax5.set_title("Distribusi Aspect Ratio (Width / Height)", fontsize=14, fontweight='bold')
-            ax5.set_xlabel("Rasio Aspek (Width / Height)", fontsize=11)
-            ax5.set_ylabel("Frekuensi / Jumlah Gambar", fontsize=11)
-            ax5.grid(axis='y', linestyle='--', alpha=0.5)
-            
             st.pyplot(fig5)
-            
-            ratios_np = np.array(ratios)
-            st.info(f"""
-            💡 **Insight Analisis Dimensi:**
-            * **Nilai Rasio Minimum:** {ratios_np.min():.2f}
-            * **Nilai Rasio Maksimum:** {ratios_np.max():.2f}
-            * **Rata-rata Rasio (Mean):** {ratios_np.mean():.2f}
-            * **Median Rasio:** {np.median(ratios_np):.2f}
-            * Mayoritas gambar dalam dataset memiliki rasio aspek mendekati 1.0 (persegi), hal ini terlihat dari nilai median dan rata-rata rasio aspek. Artinya mayoritas gambar memiliki lebar dan tinggi yang sama atau sangat mirip.
-            * Variasi Rasio Aspek yang Signifikan, dibuktikan variasi rasio aspek yang cukup luas, mulai dari nilai 0.28 hingga 6.21. Ini berarti dataset memiliki gambar dengan orientasi potret dan lanskap yang ekstrem.
-            """)
-        else:
-            st.warning("⚠️ Tidak ada data ukuran gambar yang valid ditemukan untuk melakukan visualisasi aspek rasio.")
 
     with tab5:
         st.subheader("💡 Distribusi Kecerahan (Brightness) Dataset Citra EcoWise")
-        st.write("Visualisasi di bawah merupakan histogram representasi tingkat kecerahan rata-rata piksel dari citra setelah dikonversi ke skala abu-abu (Grayscale).")
-        
-        # Daftar jalur pencarian berkas gambar grafik visualisasi statis
-        kandidat_path = [
-            os.path.join(BASE_DIR, "hist_brightness.png"),
-            os.path.join(BASE_DIR, "dfghj.png"),
-            os.path.join(DATA_DIR, "hist_brightness.png"),
-            os.path.join(DATA_DIR, "dfghj.png")
-        ]
-        
-        gambar_ditemukan = False
-        for path in kandidat_path:
-            if os.path.exists(path):
-                st.image(path, use_container_width=True)
-                gambar_ditemukan = True
-                break
-        
-        if not gambar_ditemukan:
-            st.warning("⚠️ Berkas gambar grafik ('hist_brightness.png' atau 'dfghj.png') tidak ditemukan di direktori utama maupun di folder data.")
-            st.info("""
-            💡 **Langkah Penyelesaian:**
-            1. Pastikan Anda sudah menyimpan file gambar hasil plot notebook Anda ke dalam folder proyek utama yang sama dengan berkas dashboard ini.
-            2. Pastikan nama file ditulis dengan huruf kecil semua (`hist_brightness.png`).
-            """)
-        
-        st.info("""
-                💡 **Insight Analisis Kecerahan (Brightness):**
-                * **Kecerahan Minimum:** 0.00
-                * **Kecerahan Maksimum:** 255.00
-                * **Rata-rata Kecerahan:** 169.59
-                * **Nilai Tengah Kecerahan:** 169.25
-                * **Nilai Maksimum Kecerahan:** 250.85
-                * **Nilai Minimum Kecerahan:** 51.97
-                * Mayoritas gambar dalam dataset memiliki tingkat kecerahan sedang, karena rata-rata nilai kecerahan hampir sama dengan nilai mediannya. Ini menunjukkan bahwa dataset secara keseluruhan memiliki pencahayaan yang seimbang.
-                * Terdapat rentang kecerahan yang cukup luas, dari gambar yang sangat gelap hingga sangat terang. Artinya dataset mencakup gambar yang diambil dalam berbagai kondisi pencahayaan, sehingga baik untuk melatih model agar robust terhadap variasi dunia nyata.
-                """)
-
-    st.divider()
-else:
-    st.warning("⚠️ Data kerangka grafik belum siap. Pastikan proses unduh dari Cloud Storage selesai sepenuhnya.")
-
-
-# conda activate main-ds
-# streamlit run app.py
+        if os.path.exists(os.path.join(BASE_DIR, "hist_brightness.png")):
+            st.image(os.path.join(BASE_DIR, "hist_brightness.png"), use_container_width=True, caption="Histogram Tingkat Kecerahan Pra-Kalkulasi")
+        else:
+            st.warning("⚠️ Berkas gambar 'hist_brightness.png' belum diunggah ke root repositori GitHub.")

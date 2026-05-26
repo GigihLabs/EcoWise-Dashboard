@@ -1,3 +1,5 @@
 .DS_Store
 data/ecowise_dataset.zip
 dataset_temp/
+ecowise_dataset_converted.zip
+data/ecowise_dataset_converted.zip
