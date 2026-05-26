@@ -283,6 +283,44 @@ if not df.empty:
         else:
             st.warning("Tidak ada data gambar untuk sampel EDA.")
 
+        # =========================================================================
+        # PERBAIKAN DINAMIS UNTUK MEMUAT GAMBAR DARI EXTRACT_DIR
+        # =========================================================================
+        raw_path = row['file_path'] # Nilai asli: /content/drive/MyDrive/.../Anorganik/kaleng/xyz.jpg
+        
+        # 1. Cari kata kunci 'Anorganik', 'Organik', atau 'B3' sebagai titik potong folder asli
+        parsed_path = ""
+        for category in ["Anorganik", "Organik", "B3", "Non-Waste"]:
+            if category in raw_path:
+                # Ambil jalur dari nama kategori ke belakang (misal: Anorganik/kaleng/xyz.jpg)
+                parsed_path = raw_path[raw_path.find(category):]
+                break
+            
+        # 2. Gabungkan dengan direktori ekstraksi lokal server (EXTRACT_DIR)
+        if parsed_path:
+            # Jika struktur zip Anda langsung berisi kategori, gunakan ini:
+            img_path = os.path.join(EXTRACT_DIR, parsed_path)
+            
+            # JIKA di dalam zip Anda ternyata ada bungkus folder lagi bernama 'dataset-trashcan', gunakan ini:
+            if not os.path.exists(img_path):
+                img_path = os.path.join(EXTRACT_DIR, "dataset-trashcan", parsed_path)
+                
+        else:
+            img_path = raw_path
+            
+        # 3. Alur pemuatan gambar ke Streamlit
+        if os.path.exists(img_path):
+            try:
+                image = Image.open(img_path)
+                st.image(image, caption=f"ID: {row['file_id']} | {row['kategori_utama']}", use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Error membuka gambar: {e}")
+                
+        else:
+            # Log pembantu untuk melihat di mana Streamlit Cloud mencari file tersebut secara fisik
+            st.warning(f"⚠️ File fisik tidak ditemukan di server pada lokasi: {img_path}")
+
         st.info(f"""
                 💡 **Insight Sampel Gambar:**
                 * Berdasarkan visualisasi sampel gambar, dapat dilihat bahwa dataset memiliki variasi yang cukup baik dalam hal jenis objek, latar belakang, pencahayaan, dan sudut pengambilan gambar di setiap kategori.
