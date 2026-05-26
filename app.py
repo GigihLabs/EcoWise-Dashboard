@@ -105,27 +105,24 @@ def scan_data(base_dir):
     return pd.DataFrame(file_data)
 
 # =========================================================================
-# PROSES LOADING DATASET SECARA OTOMATIS BERBASIS MANIFEST CSV
+# PROSES LOADING DATASET SECARA OTOMATIS BERBASIS MANIFEST CSV (LOCKED)
 # =========================================================================
 df = pd.DataFrame()
 
+# Kita kunci pembacaan data MUTLAK hanya dari Manifest CSV agar data tidak duplikat
 if os.path.exists(MANIFEST_PATH):
-    # Load data secara instan dari manifest file
-    df_manifest = pd.read_csv(MANIFEST_PATH)
-    df = df_manifest.copy()
+    df = pd.read_csv(MANIFEST_PATH)
     
-    # Penyelarasan struktur kolom manifest
+    # Penyelarasan kolom
     if 'labels_initial' not in df.columns and 'kategori_utama' in df.columns and 'sub_kategori' in df.columns:
         df['labels_initial'] = df['kategori_utama'] + " - " + df['sub_kategori']
         
     if 'brightness' not in df.columns:
         df['brightness'] = 127.0
         
-    # st.sidebar.success("📊 Sukses memuat data melalui Manifest CSV!")
+    st.sidebar.success("📊 Sukses memuat data melalui Manifest CSV!")
 else:
-    # Otomatis beralih ke scan folder jika manifest fisik belum terextrak
-    st.sidebar.warning("⚠️ Berkas manifest.csv tidak ditemukan di direktori temp. Melakukan pemindaian otomatis...")
-    df = scan_data(EXTRACT_DIR)
+    st.sidebar.error("❌ Berkas dataset_manifest.csv tidak ditemukan di root repositori!")
 
 # --- MAIN DASHBOARD LAYOUT ---
 st.header("🌱 EcoWise Cloud Analysis Dashboard")
