@@ -17,7 +17,9 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 ZIP_PATH = os.path.join(DATA_DIR, "ecowise_dataset_converted.zip")
 EXTRACT_DIR = os.path.join(BASE_DIR, "dataset_temp")
 LOGO_PATH = os.path.join(DATA_DIR, "logo_ecowise.png")
-MANIFEST_PATH = os.path.join(EXTRACT_DIR, "dataset_manifest.csv")
+
+# KUNCI PERBAIKAN: Ubah dari EXTRACT_DIR ke BASE_DIR
+MANIFEST_PATH = os.path.join(BASE_DIR, "dataset_manifest.csv") 
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
