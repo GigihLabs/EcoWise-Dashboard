@@ -18,13 +18,13 @@ ZIP_PATH = os.path.join(DATA_DIR, "ecowise_dataset_converted.zip")
 EXTRACT_DIR = os.path.join(BASE_DIR, "dataset_temp")
 LOGO_PATH = os.path.join(DATA_DIR, "logo_ecowise.png")
 
-# KUNCI PERBAIKAN: Ubah dari EXTRACT_DIR ke BASE_DIR
+# KUNCI PERBAIKAN: Mengarah ke ROOT repositori tempat dataset_manifest.csv berada
 MANIFEST_PATH = os.path.join(BASE_DIR, "dataset_manifest.csv") 
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# --- LINK DIRECT DOWNLOAD DROPBOX ---
-DIRECT_DOWNLOAD_LINK = "https://www.dropbox.com/scl/fi/uuv7u2442ih0akn4bdd1n/ecowise_dataset_converted.zip?rlkey=bmjmkai89o9nvj91ghxzhh8wz&st=ffqmyeou&dl=1"
+# --- LINK DIRECT DOWNLOAD DROPBOX (KUNCI PERBAIKAN: diakhiri dl=1) ---
+DIRECT_DOWNLOAD_LINK = "https://www.dropbox.com/scl/fi/uuv7u2442ih0akn4bdd1n/ecowise_dataset_converted.zip?rlkey=bmjmkai89o9nvj91ghxzhh8wz&st=vfkbr1id&dl=1"
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -45,7 +45,7 @@ def load_and_extract_from_cloud():
     if not os.path.exists(EXTRACT_DIR):
         if not os.path.exists(ZIP_PATH):
             try:
-                with st.spinner("📥 Mengunduh dataset asli dari Dropbox Cloud (1.37 GB)... Proses ini memakan waktu beberapa menit."):
+                with st.spinner("📥 Mengunduh dataset asli dari Dropbox Cloud... Proses ini memakan waktu beberapa detik."):
                     opener = urllib.request.build_opener()
                     opener.addheaders = [('User-agent', 'Mozilla/5.0')]
                     urllib.request.install_opener(opener)
@@ -68,50 +68,11 @@ def load_and_extract_from_cloud():
 status_cloud = load_and_extract_from_cloud()
 st.sidebar.info(status_cloud)
 
-# --- FUNGSI SCANNING DATASET SECARA MANUAL (FALLBACK JIKA MANIFEST HILANG) ---
-@st.cache_data
-def scan_data(base_dir):
-    file_data = []
-    if os.path.exists(base_dir):
-        for root, dirs, files in os.walk(base_dir):
-            files = [f for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            if files:
-                rel_path = os.path.relpath(root, base_dir)
-                path_parts = rel_path.split(os.sep)
-                if path_parts[0] == 'dataset-trashcan' or path_parts[0] == '.':
-                    path_parts = path_parts[1:]
-                if len(path_parts) >= 2:
-                    main_cat = path_parts[0]
-                    sub_cat = path_parts[1]
-                    for file in files:
-                        full_path = os.path.join(root, file)
-                        width, height = 0, 0
-                        brightness_val = 0.0
-                        try:
-                            with Image.open(full_path) as img:
-                                width, height = img.size
-                                img_gray = img.convert("L")
-                                brightness_val = float(np.mean(img_gray))
-                        except Exception:
-                            pass
-                        
-                        file_data.append({
-                            "file_path": full_path,
-                            "kategori_utama": main_cat, 
-                            "sub_kategori": sub_cat,
-                            "labels_initial": f"{main_cat} - {sub_cat}",
-                            "width": width,
-                            "height": height,
-                            "brightness": brightness_val
-                        })
-    return pd.DataFrame(file_data)
-
 # =========================================================================
-# PROSES LOADING DATASET SECARA OTOMATIS BERBASIS MANIFEST CSV (LOCKED)
+# PROSES LOADING DATASET BERBASIS MANIFEST CSV (LOCKED)
 # =========================================================================
 df = pd.DataFrame()
 
-# Kita kunci pembacaan data MUTLAK hanya dari Manifest CSV agar data tidak duplikat
 if os.path.exists(MANIFEST_PATH):
     df = pd.read_csv(MANIFEST_PATH)
     
@@ -171,7 +132,7 @@ if not df.empty:
             label_counts_main_eda = df['kategori_utama'].value_counts().sort_values(ascending=False)
             
             sns.countplot(x='kategori_utama', data=df, order=label_counts_main_eda.index, palette="viridis", ax=ax2)
-            ax2.set_title('Distribusi Gambar per Kelas (Anorganik, B3, Organik)', fontsize=14)
+            ax2.set_title('Distribusi Gambar per Kelas', fontsize=14)
             ax2.set_xlabel('Kelas', fontsize=12)
             ax2.set_ylabel('Jumlah Gambar', fontsize=12)
             
@@ -181,7 +142,7 @@ if not df.empty:
             plt.tight_layout()
             st.pyplot(fig2)
 
-            info_text = f"**Jumlah Gambar per Kelas (Anorganik, B3, Organik):**\n"
+            info_text = f"**Jumlah Gambar per Kelas:**\n"
             for kelas, jumlah in label_counts_main_eda.items():
                 info_text += f"- **{kelas}**: {jumlah} gambar\n"
             st.info(info_text)
@@ -199,6 +160,7 @@ if not df.empty:
         num_samples_to_display = 5
         all_images_by_category_plot = {}
 
+        # Kelompokkan data gambar berdasarkan kategori_utama dan sub_kategori
         for (main_cat, sub_cat), group in df.groupby(['kategori_utama', 'sub_kategori']):
             key_name = f"{main_cat}\n({sub_cat})"
             all_images_by_category_plot[key_name] = group['file_path'].tolist()
@@ -224,7 +186,7 @@ if not df.empty:
                     image_paths_list = all_images_by_category_plot[category_name]
 
                     if image_paths_list:
-                        # Substitusi lokasi path agar gambar tetap terbaca dari folder ekstraksi lokal
+                        # KUNCI PERBAIKAN: Mengubah jalur absolut Google Colab menjadi direktori relatif server Streamlit
                         cleaned_paths = []
                         for p in image_paths_list:
                             p_str = str(p)
@@ -234,10 +196,10 @@ if not df.empty:
                             elif "dataset_temp" in p_str:
                                 cleaned_paths.append(p_str)
                             else:
-                                # Fallback alternatif konstruksi path manual
                                 normalized_path = os.path.join(EXTRACT_DIR, "dataset-trashcan", category_name.split('\n')[0], category_name.split('\n')[1].replace('(', '').replace(')', ''), os.path.basename(p_str))
                                 cleaned_paths.append(normalized_path)
 
+                        # Mengambil sampel gambar secara acak
                         selected_image_paths = np.random.choice(
                             cleaned_paths,
                             min(num_samples_to_display, len(cleaned_paths)),
@@ -262,7 +224,7 @@ if not df.empty:
                                     img_plot = Image.open(img_path_plot).convert('RGB')
                                     axs[i, j].imshow(img_plot)
                                 except Exception:
-                                    axs[i, j].set_title("N/A (Path Error)", fontsize=8)
+                                    axs[i, j].text(0.5, 0.5, 'Error Path', ha='center', va='center', fontsize=8, color='red')
                             else:
                                 axs[i, j].text(0.5, 0.5, 'N/A', ha='center', va='center', fontsize=10)
 
@@ -282,44 +244,6 @@ if not df.empty:
                 st.pyplot(fig3)
         else:
             st.warning("Tidak ada data gambar untuk sampel EDA.")
-
-        # =========================================================================
-        # PERBAIKAN DINAMIS UNTUK MEMUAT GAMBAR DARI EXTRACT_DIR
-        # =========================================================================
-        raw_path = row['file_path'] # Nilai asli: /content/drive/MyDrive/.../Anorganik/kaleng/xyz.jpg
-        
-        # 1. Cari kata kunci 'Anorganik', 'Organik', atau 'B3' sebagai titik potong folder asli
-        parsed_path = ""
-        for category in ["Anorganik", "Organik", "B3", "Non-Waste"]:
-            if category in raw_path:
-                # Ambil jalur dari nama kategori ke belakang (misal: Anorganik/kaleng/xyz.jpg)
-                parsed_path = raw_path[raw_path.find(category):]
-                break
-            
-        # 2. Gabungkan dengan direktori ekstraksi lokal server (EXTRACT_DIR)
-        if parsed_path:
-            # Jika struktur zip Anda langsung berisi kategori, gunakan ini:
-            img_path = os.path.join(EXTRACT_DIR, parsed_path)
-            
-            # JIKA di dalam zip Anda ternyata ada bungkus folder lagi bernama 'dataset-trashcan', gunakan ini:
-            if not os.path.exists(img_path):
-                img_path = os.path.join(EXTRACT_DIR, "dataset-trashcan", parsed_path)
-                
-        else:
-            img_path = raw_path
-            
-        # 3. Alur pemuatan gambar ke Streamlit
-        if os.path.exists(img_path):
-            try:
-                image = Image.open(img_path)
-                st.image(image, caption=f"ID: {row['file_id']} | {row['kategori_utama']}", use_container_width=True)
-                
-            except Exception as e:
-                st.error(f"Error membuka gambar: {e}")
-                
-        else:
-            # Log pembantu untuk melihat di mana Streamlit Cloud mencari file tersebut secara fisik
-            st.warning(f"⚠️ File fisik tidak ditemukan di server pada lokasi: {img_path}")
 
         st.info(f"""
                 💡 **Insight Sampel Gambar:**
@@ -366,32 +290,27 @@ if not df.empty:
             ax5.set_xlabel("Rasio Aspek (Width / Height)", fontsize=11)
             ax5.set_ylabel("Frekuensi / Jumlah Gambar", fontsize=11)
             ax5.grid(axis='y', linestyle='--', alpha=0.5)
-            
             st.pyplot(fig5)
-            
+
             ratios_np = np.array(ratios)
             st.info(f"""
-            💡 **Insight Analisis Dimensi:**
-            * **Nilai Rasio Minimum:** {ratios_np.min():.2f}
-            * **Nilai Rasio Maksimum:** {ratios_np.max():.2f}
-            * **Rata-rata Rasio (Mean):** {ratios_np.mean():.2f}
-            * **Median Rasio:** {np.median(ratios_np):.2f}
-            * Mayoritas gambar dalam dataset memiliki rasio aspek mendekati 1.0 (persegi), hal ini terlihat dari nilai median dan rata-rata rasio aspek. Artinya mayoritas gambar memiliki lebar dan tinggi yang sama atau sangat mirip.
-            * Variasi Rasio Aspek yang Signifikan, dibuktikan variasi rasio aspek yang cukup luas, mulai dari nilai 0.28 hingga 6.21. Ini berarti dataset memiliki gambar dengan orientasi potret dan lanskap yang ekstrem.
-            """)
+                    💡 **Insight Analisis Dimensi:**
+                    * **Nilai Rasio Minimum:** {ratios_np.min():.2f}
+                    * **Nilai Rasio Maksimum:** {ratios_np.max():.2f}
+                    * **Rata-rata Rasio (Mean):** {ratios_np.mean():.2f}
+                    * **Median Rasio:** {np.median(ratios_np):.2f}
+                    * Mayoritas gambar dalam dataset memiliki rasio aspek mendekati 1.0 (persegi), hal ini terlihat dari nilai median dan rata-rata rasio aspek. Artinya mayoritas gambar memiliki lebar dan tinggi yang sama atau sangat mirip.
+                    * Variasi Rasio Aspek yang Signifikan, dibuktikan variasi rasio aspek yang cukup luas, mulai dari nilai 0.28 hingga 6.21. Ini berarti dataset memiliki gambar dengan orientasi potret dan lanskap yang ekstrem.
+                    """)
+
         else:
             st.warning("⚠️ Tidak ada data ukuran gambar yang valid ditemukan untuk melakukan visualisasi aspek rasio.")
 
     with tab5:
         st.subheader("💡 Distribusi Kecerahan (Brightness) Dataset Citra EcoWise")
-        st.write("Visualisasi di bawah merupakan histogram representasi tingkat kecerahan rata-rata piksel dari citra setelah dikonversi ke skala abu-abu (Grayscale).")
-        
-        # Daftar jalur pencarian berkas gambar grafik visualisasi statis
         kandidat_path = [
             os.path.join(BASE_DIR, "hist_brightness.png"),
-            os.path.join(BASE_DIR, "dfghj.png"),
-            os.path.join(DATA_DIR, "hist_brightness.png"),
-            os.path.join(DATA_DIR, "dfghj.png")
+            os.path.join(DATA_DIR, "hist_brightness.png")
         ]
         
         gambar_ditemukan = False
@@ -402,13 +321,8 @@ if not df.empty:
                 break
         
         if not gambar_ditemukan:
-            st.warning("⚠️ Berkas gambar grafik ('hist_brightness.png' atau 'dfghj.png') tidak ditemukan di direktori utama maupun di folder data.")
-            st.info("""
-            💡 **Langkah Penyelesaian:**
-            1. Pastikan Anda sudah menyimpan file gambar hasil plot notebook Anda ke dalam folder proyek utama yang sama dengan berkas dashboard ini.
-            2. Pastikan nama file ditulis dengan huruf kecil semua (`hist_brightness.png`).
-            """)
-        
+            st.warning("⚠️ Berkas gambar grafik ('hist_brightness.png') tidak ditemukan.")
+
         st.info("""
                 💡 **Insight Analisis Kecerahan (Brightness):**
                 * **Kecerahan Minimum:** 0.00
@@ -424,7 +338,6 @@ if not df.empty:
     st.divider()
 else:
     st.warning("⚠️ Data kerangka grafik belum siap. Pastikan proses unduh dari Cloud Storage selesai sepenuhnya.")
-
 
 # conda activate main-ds
 # streamlit run app.py
