@@ -157,11 +157,10 @@ if not df.empty:
         st.subheader("🖼️ Grid Sampah Berdasarkan Sub-Kategori")
         st.write("Menampilkan 5 sampel gambar secara acak untuk setiap kombinasi Kategori Utama dan Sub-Kategori Material.")
         
-        
         num_samples_to_display = 5
         all_images_by_category_plot = {}
 
-        # Kelompokkan data gambar berdasarkan kategori_utama dan sub_kategori
+        # Kelompokkan data gambar berdasarkan kategori_utama dan sub_kategori dari manifes
         for (main_cat, sub_cat), group in df.groupby(['kategori_utama', 'sub_kategori']):
             key_name = f"{main_cat}\n({sub_cat})"
             all_images_by_category_plot[key_name] = group['file_path'].tolist()
@@ -170,7 +169,7 @@ if not df.empty:
         num_categories_to_plot = len(sorted_categories_plot)
 
         if num_categories_to_plot > 0:
-            with st.spinner('Membuat grid matriks sampel gambar...'):
+            with st.spinner('Membuat grid matriks sampel gambar menggunakan Smart Matching...'):
                 fig3, axs = plt.subplots(
                     num_categories_to_plot, num_samples_to_display,
                     figsize=(num_samples_to_display * 2.5, num_categories_to_plot * 2.5)
@@ -183,39 +182,33 @@ if not df.empty:
                 elif num_samples_to_display == 1 and num_categories_to_plot == 1:
                     axs = np.array([[axs]])
 
+                import glob
+
                 for i, category_name in enumerate(sorted_categories_plot):
                     image_paths_list = all_images_by_category_plot[category_name]
 
                     if image_paths_list:
-                        # KUNCI PERBAIKAN: Deteksi jalur dinamis tanpa memedulikan nama folder pembungkus zip
                         cleaned_paths = []
-                        main_cat_clean = category_name.split('\n')[0]  # Misal: Anorganik
-                        sub_cat_clean = category_name.split('\n')[1].replace('(', '').replace(')', '') # Misal: kaleng
-
-                        for p in image_paths_list:
-                            p_str = str(p)
-                            file_name = os.path.basename(p_str) # Mengambil nama file asli (misal: AluCan577.jpg)
-                            
-                            # Kemungkinan Jalur 1: Tanpa folder pembungkus 'dataset-trashcan'
-                            path_option_1 = os.path.join(EXTRACT_DIR, main_cat_clean, sub_cat_clean, file_name)
-                            # Kemungkinan Jalur 2: Menggunakan folder pembungkus 'dataset-trashcan'
-                            path_option_2 = os.path.join(EXTRACT_DIR, "dataset-trashcan", main_cat_clean, sub_cat_clean, file_name)
-                            
-                            # Pilih jalur mana yang benar-benar ada di server secara fisik
-                            if os.path.exists(path_option_1):
-                                cleaned_paths.append(path_option_1)
-                            elif os.path.exists(path_option_2):
-                                cleaned_paths.append(path_option_2)
-                            else:
-                                # Jika belum terekstrak sempurna, masukkan opsi 1 sebagai fallback default
-                                cleaned_paths.append(path_option_1)
-
-                        # Mengambil sampel gambar secara acak
-                        selected_image_paths = np.random.choice(
-                            cleaned_paths,
-                            min(num_samples_to_display, len(cleaned_paths)),
+                        
+                        # Ambil sampel acak dari manifest terlebih dahulu
+                        sampled_manifest_paths = np.random.choice(
+                            image_paths_list,
+                            min(num_samples_to_display * 2, len(image_paths_list)), # Ambil cadangan ekstra jika ada file corrupt
                             replace=False
                         )
+
+                        for p in sampled_manifest_paths:
+                            file_name = os.path.basename(str(p)) # Mengambil nama file murni, misal: AluCan577.jpg
+                            
+                            # KUNCI PERBAIKAN UTAMA: Cari file secara rekursif di dalam folder ekstraksi
+                            search_pattern = os.path.join(EXTRACT_DIR, "**", file_name)
+                            found_files = glob.glob(search_pattern, recursive=True)
+                            
+                            if found_files:
+                                cleaned_paths.append(found_files[0]) # Masukkan jalur asli server yang ditemukan
+
+                        # Pilih sesuai jumlah yang ingin ditampilkan
+                        selected_image_paths = cleaned_paths[:num_samples_to_display]
 
                         if num_samples_to_display > 0:
                             axs[i, 0].set_ylabel(
@@ -235,11 +228,10 @@ if not df.empty:
                                     img_plot = Image.open(img_path_plot).convert('RGB')
                                     axs[i, j].imshow(img_plot)
                                 except Exception:
-                                    # Menampilkan log singkat letak folder yang gagal dibaca untuk mempermudah debugging
-                                    short_path = img_path_plot.replace(BASE_DIR, "")
-                                    axs[i, j].text(0.5, 0.5, f"Missing:\n{short_path}", ha='center', va='center', fontsize=6, color='red')
+                                    axs[i, j].text(0.5, 0.5, "Corrupt Image", ha='center', va='center', fontsize=8, color='red')
                             else:
-                                axs[i, j].text(0.5, 0.5, 'N/A', ha='center', va='center', fontsize=10)
+                                # Tampilkan pesan informatif jika pencarian glob tidak menemukan file tersebut
+                                axs[i, j].text(0.5, 0.5, "File Not Found\nin Zip Extraction", ha='center', va='center', fontsize=7, color='orange')
 
                             axs[i, j].set_xticks([])
                             axs[i, j].set_yticks([])
@@ -257,7 +249,7 @@ if not df.empty:
                 st.pyplot(fig3)
         else:
             st.warning("Tidak ada data gambar untuk sampel EDA.")
-
+        
         st.info(f"""
                 💡 **Insight Sampel Gambar:**
                 * Berdasarkan visualisasi sampel gambar, dapat dilihat bahwa dataset memiliki variasi yang cukup baik dalam hal jenis objek, latar belakang, pencahayaan, dan sudut pengambilan gambar di setiap kategori.
