@@ -157,6 +157,7 @@ if not df.empty:
         st.subheader("🖼️ Grid Sampah Berdasarkan Sub-Kategori")
         st.write("Menampilkan 5 sampel gambar secara acak untuk setiap kombinasi Kategori Utama dan Sub-Kategori Material.")
         
+        
         num_samples_to_display = 5
         all_images_by_category_plot = {}
 
@@ -186,18 +187,28 @@ if not df.empty:
                     image_paths_list = all_images_by_category_plot[category_name]
 
                     if image_paths_list:
-                        # KUNCI PERBAIKAN: Mengubah jalur absolut Google Colab menjadi direktori relatif server Streamlit
+                        # KUNCI PERBAIKAN: Deteksi jalur dinamis tanpa memedulikan nama folder pembungkus zip
                         cleaned_paths = []
+                        main_cat_clean = category_name.split('\n')[0]  # Misal: Anorganik
+                        sub_cat_clean = category_name.split('\n')[1].replace('(', '').replace(')', '') # Misal: kaleng
+
                         for p in image_paths_list:
                             p_str = str(p)
-                            if "/content/drive/MyDrive/EcoWise/dataset-trashcan/" in p_str:
-                                local_p = p_str.replace("/content/drive/MyDrive/EcoWise/dataset-trashcan/", f"{EXTRACT_DIR}/dataset-trashcan/")
-                                cleaned_paths.append(local_p)
-                            elif "dataset_temp" in p_str:
-                                cleaned_paths.append(p_str)
+                            file_name = os.path.basename(p_str) # Mengambil nama file asli (misal: AluCan577.jpg)
+                            
+                            # Kemungkinan Jalur 1: Tanpa folder pembungkus 'dataset-trashcan'
+                            path_option_1 = os.path.join(EXTRACT_DIR, main_cat_clean, sub_cat_clean, file_name)
+                            # Kemungkinan Jalur 2: Menggunakan folder pembungkus 'dataset-trashcan'
+                            path_option_2 = os.path.join(EXTRACT_DIR, "dataset-trashcan", main_cat_clean, sub_cat_clean, file_name)
+                            
+                            # Pilih jalur mana yang benar-benar ada di server secara fisik
+                            if os.path.exists(path_option_1):
+                                cleaned_paths.append(path_option_1)
+                            elif os.path.exists(path_option_2):
+                                cleaned_paths.append(path_option_2)
                             else:
-                                normalized_path = os.path.join(EXTRACT_DIR, "dataset-trashcan", category_name.split('\n')[0], category_name.split('\n')[1].replace('(', '').replace(')', ''), os.path.basename(p_str))
-                                cleaned_paths.append(normalized_path)
+                                # Jika belum terekstrak sempurna, masukkan opsi 1 sebagai fallback default
+                                cleaned_paths.append(path_option_1)
 
                         # Mengambil sampel gambar secara acak
                         selected_image_paths = np.random.choice(
@@ -224,7 +235,9 @@ if not df.empty:
                                     img_plot = Image.open(img_path_plot).convert('RGB')
                                     axs[i, j].imshow(img_plot)
                                 except Exception:
-                                    axs[i, j].text(0.5, 0.5, 'Error Path', ha='center', va='center', fontsize=8, color='red')
+                                    # Menampilkan log singkat letak folder yang gagal dibaca untuk mempermudah debugging
+                                    short_path = img_path_plot.replace(BASE_DIR, "")
+                                    axs[i, j].text(0.5, 0.5, f"Missing:\n{short_path}", ha='center', va='center', fontsize=6, color='red')
                             else:
                                 axs[i, j].text(0.5, 0.5, 'N/A', ha='center', va='center', fontsize=10)
 
